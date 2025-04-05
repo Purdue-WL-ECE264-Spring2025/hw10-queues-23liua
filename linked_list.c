@@ -21,13 +21,13 @@ void insert_at_head(struct linked_list *list, size_t value) {
 void insert_at_tail(struct linked_list *list, size_t value) {
     struct list_node *node = new_node(value);
 
-    // if list is empty, the new node becomes head
+    // if the list is empty, new node becomes the head
     if (list->head == NULL) {
         list->head = node;
         return;
     }
 
-    // otherwise, find the last node
+    // otherwise, walk to the end and append
     struct list_node *cur = list->head;
     while (cur->next != NULL) {
         cur = cur->next;
@@ -38,11 +38,11 @@ void insert_at_tail(struct linked_list *list, size_t value) {
 // removes a node from the head of the list and returns its value
 size_t remove_from_head(struct linked_list *list) {
     if (list->head == NULL) {
-        return 0; // or some sentinel for "empty list"
+        return 0; // or some sentinel for "empty"
     }
     struct list_node *temp = list->head;
     size_t val = temp->value;
-    list->head = temp->next;  // advance head
+    list->head = temp->next;
     free(temp);
     return val;
 }
@@ -61,7 +61,7 @@ size_t remove_from_tail(struct linked_list *list) {
         return val;
     }
 
-    // otherwise, find the node before the last node
+    // otherwise, find the node before the last
     struct list_node *cur = list->head;
     while (cur->next->next != NULL) {
         cur = cur->next;
@@ -72,7 +72,7 @@ size_t remove_from_tail(struct linked_list *list) {
     return val;
 }
 
-// frees every node in the list
+// frees all nodes in the list
 void free_list(struct linked_list list) {
     struct list_node *cur = list.head;
     while (cur != NULL) {
@@ -82,7 +82,7 @@ void free_list(struct linked_list list) {
     }
 }
 
-// prints
+// debugging function to print the list contents
 void dump_list(FILE *fp, struct linked_list list) {
     fprintf(fp, "[ ");
     for (struct list_node *cur = list.head; cur != NULL; cur = cur->next) {
