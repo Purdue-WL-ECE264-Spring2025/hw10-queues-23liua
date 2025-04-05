@@ -5,133 +5,111 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void enqueue(struct queue *qq, struct game_state st) {
-    uint64_t coded = serialize(st);
-    insert_at_tail(&(qq->data), (size_t)coded);
+#define HASH_BUCKETS 88801
+
+typedef struct node_track {
+    uint64_t fingerprint;
+    struct node_track *next;
+} node_track;
+
+static node_track *visited_map[HASH_BUCKETS];
+
+static unsigned bucket_index(uint64_t key) {
+    return key % HASH_BUCKETS;
 }
 
-struct game_state dequeue(struct queue *qq) {
-    size_t sVal = remove_from_head(&(qq->data));
-    return deserialize((uint64_t)sVal);
-}
-
-#define VISITSIZE 88801
-
-typedef struct visit_node {
-    uint64_t rep;
-    struct visit_node *chain;
-} visit_node;
-
-static visit_node *visitTable[VISITSIZE];
-
-static unsigned get_index(uint64_t key) {
-    return (unsigned)(key % VISITSIZE);
-}
-
-static bool visited_has(uint64_t key) {
-    unsigned i = get_index(key);
-    for (visit_node *cursor = visitTable[i]; cursor; cursor = cursor->chain) {
-        if (cursor->rep == key) return true;
+static bool was_visited(uint64_t hash) {
+    for (node_track *cur = visited_map[bucket_index(hash)]; cur; cur = cur->next) {
+        if (cur->fingerprint == hash) return true;
     }
     return false;
 }
 
-static void visited_add(uint64_t key) {
-    unsigned i = get_index(key);
-    visit_node *tmp = malloc(sizeof(visit_node));
-    if (!tmp) exit(2);
-    tmp->rep   = key;
-    tmp->chain = visitTable[i];
-    visitTable[i] = tmp;
+static void add_to_visited(uint64_t hash) {
+    unsigned idx = bucket_index(hash);
+    node_track *entry = malloc(sizeof(node_track));
+    if (!entry) exit(1);
+    entry->fingerprint = hash;
+    entry->next = visited_map[idx];
+    visited_map[idx] = entry;
 }
 
-static void visited_cleanup() {
-    for (int j = 0; j < VISITSIZE; j++) {
-        visit_node *ptr = visitTable[j];
-        while (ptr) {
-            visit_node *gone = ptr;
-            ptr = ptr->chain;
-            free(gone);
+static void reset_visited() {
+    for (int i = 0; i < HASH_BUCKETS; i++) {
+        node_track *cur = visited_map[i];
+        while (cur) {
+            node_track *tmp = cur;
+            cur = cur->next;
+            free(tmp);
         }
-        visitTable[j] = NULL;
+        visited_map[i] = NULL;
     }
 }
 
-static bool is_solved(struct game_state s) {
-    int need = 1;
+static bool goal_reached(struct game_state state) {
+    int val = 1;
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
             if (r == 3 && c == 3) {
-                if (s.tiles[r][c] != 0) return false;
+                if (state.tiles[r][c] != 0) return false;
             } else {
-                if (s.tiles[r][c] != need) return false;
-                need++;
+                if (state.tiles[r][c] != val++) return false;
             }
         }
     }
     return true;
 }
 
-static void flush_queue(struct queue *qq) {
-    free_list(qq->data);
-    qq->data.head = NULL;
+void enqueue(struct queue *q, struct game_state state) {
+    uint64_t data = serialize(state);
+    insert_at_tail(&q->data, data);
 }
 
-int number_of_moves(struct game_state start) {
-    if (is_solved(start)) {
-        return start.num_steps;
-    }
-    for (int c = 0; c < VISITSIZE; c++) {
-        visitTable[c] = NULL;
-    }
-    struct queue store;
-    store.data.head = NULL;
-    uint64_t origin = serialize(start);
-    visited_add(origin);
-    enqueue(&store, start);
-    while (store.data.head) {
-        struct game_state top = dequeue(&store);
-        if (is_solved(top)) {
-            visited_cleanup();
-            flush_queue(&store);
-            return top.num_steps;
-        }
-        uint64_t top_id = serialize(top);
-        struct game_state attempt;
-        uint64_t next_id;
+struct game_state dequeue(struct queue *q) {
+    uint64_t encoded = remove_from_head(&q->data);
+    return deserialize(encoded);
+}
 
-        attempt = top;
-        move_down(&attempt);
-        next_id = serialize(attempt);
-        if (next_id != top_id && !visited_has(next_id)) {
-            visited_add(next_id);
-            enqueue(&store, attempt);
+static void clean_queue(struct queue *q) {
+    free_list(q->data);
+    q->data.head = NULL;
+}
+
+int number_of_moves(struct game_state begin) {
+    if (goal_reached(begin)) return begin.num_steps;
+
+    for (int i = 0; i < HASH_BUCKETS; i++) visited_map[i] = NULL;
+
+    struct queue q = {0};
+    add_to_visited(serialize(begin));
+    enqueue(&q, begin);
+
+    while (q.data.head) {
+        struct game_state current = dequeue(&q);
+        if (goal_reached(current)) {
+            int answer = current.num_steps;
+            clean_queue(&q);
+            reset_visited();
+            return answer;
         }
 
-        attempt = top;
-        move_right(&attempt);
-        next_id = serialize(attempt);
-        if (next_id != top_id && !visited_has(next_id)) {
-            visited_add(next_id);
-            enqueue(&store, attempt);
-        }
+        struct game_state copy;
+        uint64_t current_hash = serialize(current);
 
-        attempt = top;
-        move_up(&attempt);
-        next_id = serialize(attempt);
-        if (next_id != top_id && !visited_has(next_id)) {
-            visited_add(next_id);
-            enqueue(&store, attempt);
-        }
+        const int ops = 4;
+        void (*moves[ops])(struct game_state *) = { move_up, move_down, move_left, move_right };
 
-        attempt = top;
-        move_left(&attempt);
-        next_id = serialize(attempt);
-        if (next_id != top_id && !visited_has(next_id)) {
-            visited_add(next_id);
-            enqueue(&store, attempt);
+        for (int i = 0; i < ops; i++) {
+            copy = current;
+            moves[i](&copy);
+            uint64_t next_hash = serialize(copy);
+            if (next_hash != current_hash && !was_visited(next_hash)) {
+                add_to_visited(next_hash);
+                enqueue(&q, copy);
+            }
         }
     }
-    visited_cleanup();
+
+    reset_visited();
     return -1;
 }
