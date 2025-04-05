@@ -5,174 +5,126 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// we keep the same signatures, but rename variables and mix it up
-
-void enqueue(struct queue *q, struct game_state s) {
-    uint64_t encoded = serialize(s);
-    // insert at tail of q->data (linked_list)
-    insert_at_tail(&(q->data), (size_t)encoded);
+void enqueue(struct queue *qq, struct game_state st) {
+    uint64_t coded = serialize(st);
+    insert_at_tail(&(qq->data), (size_t)coded);
 }
 
-struct game_state dequeue(struct queue *q) {
-    // remove head from q->data
-    size_t encoded = remove_from_head(&(q->data));
-    return deserialize((uint64_t)encoded);
+struct game_state dequeue(struct queue *qq) {
+    size_t sVal = remove_from_head(&(qq->data));
+    return deserialize((uint64_t)sVal);
 }
 
-// let's rename the hash size
-#define BUCKET_COUNT 100003
+#define VISITSIZE 88801
 
-// rename the visited_node struct
-typedef struct vnode {
-    uint64_t val;
-    struct vnode *chain;
-} vnode;
+typedef struct visit_node {
+    uint64_t rep;
+    struct visit_node *chain;
+} visit_node;
 
-// create an array of pointers to vnode
-static vnode *buckets[BUCKET_COUNT];
+static visit_node *visitTable[VISITSIZE];
 
-// do a simple mod-based hash
-static int64_t hash64(uint64_t x) {
-    return (int64_t)(x % BUCKET_COUNT);
+static unsigned get_index(uint64_t key) {
+    return (unsigned)(key % VISITSIZE);
 }
 
-// checks if a key is already in our buckets
-static bool was_visited(uint64_t key) {
-    int64_t h = hash64(key);
-    vnode *trav = buckets[h];
-    while (trav != NULL) {
-        if (trav->val == key) {
-            return true;
-        }
-        trav = trav->chain;
+static bool visited_has(uint64_t key) {
+    unsigned i = get_index(key);
+    for (visit_node *cursor = visitTable[i]; cursor; cursor = cursor->chain) {
+        if (cursor->rep == key) return true;
     }
     return false;
 }
 
-// inserts a new key into our visited set
-static void mark_visited(uint64_t key) {
-    int64_t h = hash64(key);
-    vnode *nn = malloc(sizeof(vnode));
-    nn->val = key;
-    nn->chain = buckets[h];
-    buckets[h] = nn;
+static void visited_add(uint64_t key) {
+    unsigned i = get_index(key);
+    visit_node *tmp = malloc(sizeof(visit_node));
+    if (!tmp) exit(2);
+    tmp->rep   = key;
+    tmp->chain = visitTable[i];
+    visitTable[i] = tmp;
 }
 
-// frees the entire visited structure
-static void release_buckets() {
-    for (int i = 0; i < BUCKET_COUNT; i++) {
-        vnode *cur = buckets[i];
-        while (cur) {
-            vnode *tmp = cur->chain;
-            free(cur);
-            cur = tmp;
+static void visited_cleanup() {
+    for (int j = 0; j < VISITSIZE; j++) {
+        visit_node *ptr = visitTable[j];
+        while (ptr) {
+            visit_node *gone = ptr;
+            ptr = ptr->chain;
+            free(gone);
         }
-        buckets[i] = NULL;
+        visitTable[j] = NULL;
     }
 }
 
-// checks if the given state is solved
-static bool puzzle_solved(struct game_state g) {
-    int expect = 1;
+static bool is_solved(struct game_state s) {
+    int need = 1;
     for (int rr = 0; rr < 4; rr++) {
         for (int cc = 0; cc < 4; cc++) {
             if (rr == 3 && cc == 3) {
-                if (g.tiles[rr][cc] != 0) {
-                    return false;
-                }
+                if (s.tiles[rr][cc] != 0) return false;
             } else {
-                if (g.tiles[rr][cc] != expect) {
-                    return false;
-                }
-                expect++;
+                if (s.tiles[rr][cc] != need) return false;
+                need++;
             }
         }
     }
     return true;
 }
 
-// frees the queue's linked_list data
-static void clear_queue(struct queue *q) {
-    free_list(q->data);
-    q->data.head = NULL;
+static void flush_queue(struct queue *qq) {
+    free_list(qq->data);
+    qq->data.head = NULL;
 }
 
-// returns the fewest moves to solve the puzzle, or -1 if impossible
-int number_of_moves(struct game_state beginning) {
-    // if it's already solved, return that step count
-    if (puzzle_solved(beginning)) {
-        return beginning.num_steps;
+int number_of_moves(struct game_state start) {
+    if (is_solved(start)) {
+        return start.num_steps;
     }
-
-    // init our queue
-    struct queue q2;
-    q2.data.head = NULL; // empty
-
-    // clear out old visited data
-    for (int k = 0; k < BUCKET_COUNT; k++) {
-        buckets[k] = NULL;
+    for (int c = 0; c < VISITSIZE; c++) {
+        visitTable[c] = NULL;
     }
-
-    // mark the start as visited
-    uint64_t start_encoded = serialize(beginning);
-    mark_visited(start_encoded);
-    enqueue(&q2, beginning);
-
-    // BFS
-    while (q2.data.head != NULL) {
-        struct game_state currentState = dequeue(&q2);
-        if (puzzle_solved(currentState)) {
-            release_buckets();
-            clear_queue(&q2);
-            return currentState.num_steps;
+    struct queue store;
+    store.data.head = NULL;
+    uint64_t origin = serialize(start);
+    visited_add(origin);
+    enqueue(&store, start);
+    while (store.data.head) {
+        struct game_state top = dequeue(&store);
+        if (is_solved(top)) {
+            visited_cleanup();
+            flush_queue(&store);
+            return top.num_steps;
         }
+        uint64_t top_id = serialize(top);
+        struct game_state attempt;
+        uint64_t next_id;
 
-        uint64_t cval = serialize(currentState);
-
-        // we'll mix up the order: move_left, move_right, move_up, move_down
-        // each time, we build a 'candidate' state, move it, encode it, check if visited.
-
-        struct game_state candidate;
-        uint64_t cand_encoded;
-
-        // left
-        candidate = currentState;
-        move_left(&candidate);
-        cand_encoded = serialize(candidate);
-        if (cand_encoded != cval && !was_visited(cand_encoded)) {
-            mark_visited(cand_encoded);
-            enqueue(&q2, candidate);
+        move_down(& (attempt = top)); 
+        next_id = serialize(attempt);
+        if (next_id != top_id && !visited_has(next_id)) {
+            visited_add(next_id);
+            enqueue(&store, attempt);
         }
-
-        // right
-        candidate = currentState;
-        move_right(&candidate);
-        cand_encoded = serialize(candidate);
-        if (cand_encoded != cval && !was_visited(cand_encoded)) {
-            mark_visited(cand_encoded);
-            enqueue(&q2, candidate);
+        move_right(& (attempt = top));
+        next_id = serialize(attempt);
+        if (next_id != top_id && !visited_has(next_id)) {
+            visited_add(next_id);
+            enqueue(&store, attempt);
         }
-
-        // up
-        candidate = currentState;
-        move_up(&candidate);
-        cand_encoded = serialize(candidate);
-        if (cand_encoded != cval && !was_visited(cand_encoded)) {
-            mark_visited(cand_encoded);
-            enqueue(&q2, candidate);
+        move_up(& (attempt = top));
+        next_id = serialize(attempt);
+        if (next_id != top_id && !visited_has(next_id)) {
+            visited_add(next_id);
+            enqueue(&store, attempt);
         }
-
-        // down
-        candidate = currentState;
-        move_down(&candidate);
-        cand_encoded = serialize(candidate);
-        if (cand_encoded != cval && !was_visited(cand_encoded)) {
-            mark_visited(cand_encoded);
-            enqueue(&q2, candidate);
+        move_left(& (attempt = top));
+        next_id = serialize(attempt);
+        if (next_id != top_id && !visited_has(next_id)) {
+            visited_add(next_id);
+            enqueue(&store, attempt);
         }
     }
-
-    // if we exhaust possibilities without finding a solution
-    release_buckets();
+    visited_cleanup();
     return -1;
 }
