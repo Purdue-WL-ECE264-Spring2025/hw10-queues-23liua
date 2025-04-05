@@ -1,91 +1,89 @@
 #include "linked_list.h"
 #include <stdlib.h>
+#include <stdio.h>
 
-// makes a new node with given value
-struct list_node *new_node(size_t value) {
-    struct list_node *node = malloc(sizeof(struct list_node));
-    if (node == NULL) {
-        return NULL;
+struct list_node *new_node(size_t val) {
+    // allocate memory for a new node
+    struct list_node *temp = malloc(sizeof(struct list_node));
+    if (temp) {
+        temp->value = val;
+        temp->next  = NULL;
     }
-    node->value = value;
-    node->next = NULL;
-    return node;
+    return temp;
 }
 
-// adds node to front of list
-void insert_at_head(struct linked_list *list, size_t value) {
-    struct list_node *node = new_node(value);
-    if (node == NULL) {
-        return;
-    }
-    node->next = list->head;
-    list->head = node;
-    if (list->tail == NULL) {
-        list->tail = node;
-    }
+void insert_at_head(struct linked_list *lst, size_t data) {
+    struct list_node *temp = new_node(data);
+    if (!temp) return; 
+    temp->next = lst->head;
+    lst->head  = temp;
 }
 
-// adds node to end of list
-void insert_at_tail(struct linked_list *list, size_t value) {
-    struct list_node *node = new_node(value);
-    if (node == NULL) {
-        return;
-    }
-    if (list->tail == NULL) {
-        list->head = node;
-        list->tail = node;
+void insert_at_tail(struct linked_list *lst, size_t data) {
+    struct list_node *fresh = new_node(data);
+    if (fresh == NULL) return;
+
+    if (lst->head == NULL) {
+        // empty list
+        lst->head = fresh;
     } else {
-        list->tail->next = node;
-        list->tail = node;
+        // walk to the end
+        struct list_node *p = lst->head;
+        while (p->next != NULL) {
+            p = p->next;
+        }
+        p->next = fresh;
     }
 }
 
-// removes and returns first node's value
-size_t remove_from_head(struct linked_list *list) {
-    if (list->head == NULL) {
-        return 0;
-    }
-    struct list_node *node = list->head;
-    size_t value = node->value;
-    list->head = node->next;
-    if (list->head == NULL) {
-        list->tail = NULL;
-    }
-    free(node);
-    return value;
+size_t remove_from_head(struct linked_list *lst) {
+    if (lst->head == NULL) return 0; // nothing to remove
+    struct list_node *temp = lst->head;
+    size_t val = temp->value;
+    lst->head = temp->next;
+    free(temp);
+    return val;
 }
 
-// removes and returns last node's value
-size_t remove_from_tail(struct linked_list *list) {
-    if (list->tail == NULL) {
-        return 0;
+size_t remove_from_tail(struct linked_list *lst) {
+    if (lst->head == NULL) return 0;  // nothing here
+    if (lst->head->next == NULL) {
+        // only one node
+        size_t val = lst->head->value;
+        free(lst->head);
+        lst->head = NULL;
+        return val;
     }
-    if (list->head == list->tail) {
-        size_t value = list->head->value;
-        free(list->head);
-        list->head = NULL;
-        list->tail = NULL;
-        return value;
-    }
+
+    // otherwise, find the node before the last one
+    struct list_node *walk = lst->head;
     struct list_node *prev = NULL;
-    struct list_node *curr = list->head;
-    while (curr->next != NULL) {
-        prev = curr;
-        curr = curr->next;
+    while (walk->next != NULL) {
+        prev = walk;
+        walk = walk->next;
     }
-    size_t value = curr->value;
-    free(curr);
-    prev->next = NULL;
-    list->tail = prev;
-    return value;
+    size_t val = walk->value;
+    free(walk);
+    if (prev) {
+        prev->next = NULL;
+    }
+    return val;
 }
 
-// frees all nodes in the list
-void free_list(struct linked_list list) {
-    struct list_node *curr = list.head;
-    while (curr != NULL) {
-        struct list_node *next = curr->next;
-        free(curr);
-        curr = next;
+void free_list(struct linked_list lst) {
+    // free all nodes
+    struct list_node *ptr = lst.head;
+    while (ptr != NULL) {
+        struct list_node *advance = ptr->next;
+        free(ptr);
+        ptr = advance;
     }
+}
+
+void dump_list(FILE *fp, struct linked_list lst) {
+    fprintf(fp, "[ ");
+    for (struct list_node *scan = lst.head; scan != NULL; scan = scan->next) {
+        fprintf(fp, "%zu ", scan->value);
+    }
+    fprintf(fp, "]\n");
 }
