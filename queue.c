@@ -5,19 +5,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-// adds a state to the end of the queue
-void enqueue(struct queue *q, struct game_state state) {
-    size_t encoded = serialize(state);
-    insert_at_tail(&q->list, encoded);
-}
-
-// removes and returns the state at the front of the queue
-struct game_state dequeue(struct queue *q) {
-    size_t encoded = remove_from_head(&q->list);
-    return deserialize(encoded);
-}
-
-// checks if a serialized state is already in the list
+// helper that checks if a serialized state is in a linked list
 static bool in_list(struct linked_list *lst, size_t val) {
     for (struct list_node *cur = lst->head; cur != NULL; cur = cur->next) {
         if (cur->value == val) {
@@ -27,9 +15,21 @@ static bool in_list(struct linked_list *lst, size_t val) {
     return false;
 }
 
-// returns the fewest moves needed to solve the puzzle, or -1 if it can't find a solution
+// enqueue: serialize and insert at tail
+void enqueue(struct queue *q, struct game_state state) {
+    size_t encoded = serialize(state);
+    insert_at_tail(&q->list, encoded);
+}
+
+// dequeue: remove from head and deserialize
+struct game_state dequeue(struct queue *q) {
+    size_t encoded = remove_from_head(&q->list);
+    return deserialize(encoded);
+}
+
+// returns how many moves are needed to reach the solved state, or -1 if not found
 int number_of_moves(struct game_state start) {
-    // set up the solved state
+    // define the solved state
     struct game_state solved;
     int tile = 1;
     for (int r = 0; r < 4; r++) {
@@ -37,47 +37,48 @@ int number_of_moves(struct game_state start) {
             solved.board[r][c] = tile++;
         }
     }
+    // last spot is 0
     solved.board[3][3] = 0;
     solved.empty_r = 3;
     solved.empty_c = 3;
     solved.moves = 0;
 
     size_t solved_int = serialize(solved);
-    size_t start_int = serialize(start);
+    size_t start_int  = serialize(start);
 
-    // if the starting state is already solved, return 0
+    // check if we are already solved
     if (start_int == solved_int) {
         return 0;
     }
 
-    // set up the queue
+    // set up queue
     struct queue q;
     q.list.head = NULL;
-    q.list.tail = NULL;
     enqueue(&q, start);
 
-    // keep track of visited states
+    // track visited states
     struct linked_list visited;
     visited.head = NULL;
-    visited.tail = NULL;
     insert_at_tail(&visited, start_int);
 
-    // bfs loop
+    // bfs
     while (q.list.head != NULL) {
         struct game_state current = dequeue(&q);
         size_t current_int = serialize(current);
 
-        // check if we reached the solved state
+        // if solved, free and return
         if (current_int == solved_int) {
-            free_list(q.list);
-            free_list(visited);
+            free_list(q.list);      // free nodes in queue
+            free_list(visited);     // free nodes in visited
             return current.moves;
         }
 
         int r = current.empty_r;
         int c = current.empty_c;
 
-        // move tile from above
+        // 4 possible slides: from above, below, left, right
+
+        // slide tile in from above
         if (r > 0) {
             struct game_state next = current;
             next.board[r][c] = next.board[r - 1][c];
@@ -93,7 +94,7 @@ int number_of_moves(struct game_state start) {
             }
         }
 
-        // move tile from below
+        // slide tile in from below
         if (r < 3) {
             struct game_state next = current;
             next.board[r][c] = next.board[r + 1][c];
@@ -109,7 +110,7 @@ int number_of_moves(struct game_state start) {
             }
         }
 
-        // move tile from the left
+        // slide tile in from the left
         if (c > 0) {
             struct game_state next = current;
             next.board[r][c] = next.board[r][c - 1];
@@ -125,7 +126,7 @@ int number_of_moves(struct game_state start) {
             }
         }
 
-        // move tile from the right
+        // slide tile in from the right
         if (c < 3) {
             struct game_state next = current;
             next.board[r][c] = next.board[r][c + 1];
@@ -142,7 +143,7 @@ int number_of_moves(struct game_state start) {
         }
     }
 
-    // if we somehow never reach a solution
+    // if we exhaust the queue without finding a solution
     free_list(visited);
     return -1;
 }
