@@ -2,114 +2,117 @@
 #include "tile_game.h"
 #include "linked_list.h"
 #include <stdlib.h>
-#include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
-#define HASH_BUCKETS 88801
+#define VISIT_CAPACITY 88801
 
-typedef struct node_track {
+typedef struct hashed_node {
     uint64_t fingerprint;
-    struct node_track *next;
-} node_track;
+    struct hashed_node *next;
+} hashed_node;
 
-static node_track *visited_map[HASH_BUCKETS];
+static hashed_node *seen[VISIT_CAPACITY];
 
-static unsigned bucket_index(uint64_t key) {
-    return key % HASH_BUCKETS;
+static unsigned compute_hash(uint64_t key) {
+    return (unsigned)(key % VISIT_CAPACITY);
 }
 
-static bool was_visited(uint64_t hash) {
-    for (node_track *cur = visited_map[bucket_index(hash)]; cur; cur = cur->next) {
-        if (cur->fingerprint == hash) return true;
+static int has_been_seen(uint64_t fingerprint) {
+    hashed_node *cur = seen[compute_hash(fingerprint)];
+    while (cur) {
+        if (cur->fingerprint == fingerprint) return 1;
+        cur = cur->next;
     }
-    return false;
+    return 0;
 }
 
-static void add_to_visited(uint64_t hash) {
-    unsigned idx = bucket_index(hash);
-    node_track *entry = malloc(sizeof(node_track));
-    if (!entry) exit(1);
-    entry->fingerprint = hash;
-    entry->next = visited_map[idx];
-    visited_map[idx] = entry;
+static void mark_seen(uint64_t fingerprint) {
+    unsigned idx = compute_hash(fingerprint);
+    hashed_node *entry = malloc(sizeof(hashed_node));
+    if (!entry) exit(EXIT_FAILURE);
+    entry->fingerprint = fingerprint;
+    entry->next = seen[idx];
+    seen[idx] = entry;
 }
 
-static void reset_visited() {
-    for (int i = 0; i < HASH_BUCKETS; i++) {
-        node_track *cur = visited_map[i];
+static void wipe_seen() {
+    for (int i = 0; i < VISIT_CAPACITY; ++i) {
+        hashed_node *cur = seen[i];
         while (cur) {
-            node_track *tmp = cur;
+            hashed_node *to_free = cur;
             cur = cur->next;
-            free(tmp);
+            free(to_free);
         }
-        visited_map[i] = NULL;
+        seen[i] = NULL;
     }
 }
 
-static bool goal_reached(struct game_state state) {
-    int val = 1;
-    for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 4; c++) {
-            if (r == 3 && c == 3) {
-                if (state.tiles[r][c] != 0) return false;
-            } else {
-                if (state.tiles[r][c] != val++) return false;
-            }
-        }
-    }
-    return true;
+static int state_is_goal(struct game_state candidate) {
+    uint8_t goal_tiles[4][4] = {
+        {1, 2, 3, 4},
+        {5, 6, 7, 8},
+        {9, 10, 11, 12},
+        {13, 14, 15, 0}
+    };
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            if (candidate.tiles[i][j] != goal_tiles[i][j])
+                return 0;
+    return 1;
 }
 
-void enqueue(struct queue *q, struct game_state state) {
-    uint64_t data = serialize(state);
-    insert_at_tail(&q->data, data);
+void enqueue(struct queue *q, struct game_state g) {
+    uint64_t code = serialize(g);
+    insert_at_tail(&q->data, code);
 }
 
 struct game_state dequeue(struct queue *q) {
-    uint64_t encoded = remove_from_head(&q->data);
-    return deserialize(encoded);
+    uint64_t val = remove_from_head(&q->data);
+    return deserialize(val);
 }
 
-static void clean_queue(struct queue *q) {
-    free_list(q->data);
-    q->data.head = NULL;
-}
+int number_of_moves(struct game_state start) {
+    if (state_is_goal(start))
+        return start.num_steps;
 
-int number_of_moves(struct game_state begin) {
-    if (goal_reached(begin)) return begin.num_steps;
+    struct queue bfs;
+    bfs.data.head = NULL;
 
-    for (int i = 0; i < HASH_BUCKETS; i++) visited_map[i] = NULL;
+    for (int i = 0; i < VISIT_CAPACITY; ++i)
+        seen[i] = NULL;
 
-    struct queue q = {0};
-    add_to_visited(serialize(begin));
-    enqueue(&q, begin);
+    enqueue(&bfs, start);
+    mark_seen(serialize(start));
 
-    while (q.data.head) {
-        struct game_state current = dequeue(&q);
-        if (goal_reached(current)) {
-            int answer = current.num_steps;
-            clean_queue(&q);
-            reset_visited();
-            return answer;
+    while (bfs.data.head) {
+        struct game_state cur = dequeue(&bfs);
+        if (state_is_goal(cur)) {
+            int result = cur.num_steps;
+            wipe_seen();
+            free_list(bfs.data);
+            return result;
         }
 
-        struct game_state copy;
-        uint64_t current_hash = serialize(current);
+        struct game_state dirs[4];
+        dirs[0] = cur; dirs[1] = cur;
+        dirs[2] = cur; dirs[3] = cur;
 
-        const int ops = 4;
-        void (*moves[ops])(struct game_state *) = { move_up, move_down, move_left, move_right };
+        move_up(&dirs[0]);
+        move_down(&dirs[1]);
+        move_left(&dirs[2]);
+        move_right(&dirs[3]);
 
-        for (int i = 0; i < ops; i++) {
-            copy = current;
-            moves[i](&copy);
-            uint64_t next_hash = serialize(copy);
-            if (next_hash != current_hash && !was_visited(next_hash)) {
-                add_to_visited(next_hash);
-                enqueue(&q, copy);
+        for (int i = 0; i < 4; ++i) {
+            uint64_t s = serialize(dirs[i]);
+            if (s != serialize(cur) && !has_been_seen(s)) {
+                dirs[i].num_steps = cur.num_steps + 1;
+                enqueue(&bfs, dirs[i]);
+                mark_seen(s);
             }
         }
     }
 
-    reset_visited();
+    wipe_seen();
     return -1;
 }
