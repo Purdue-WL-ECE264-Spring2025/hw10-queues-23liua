@@ -59,12 +59,12 @@ static void visited_cleanup() {
 
 static bool is_solved(struct game_state s) {
     int need = 1;
-    for (int rr = 0; rr < 4; rr++) {
-        for (int cc = 0; cc < 4; cc++) {
-            if (rr == 3 && cc == 3) {
-                if (s.tiles[rr][cc] != 0) return false;
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            if (r == 3 && c == 3) {
+                if (s.tiles[r][c] != 0) return false;
             } else {
-                if (s.tiles[rr][cc] != need) return false;
+                if (s.tiles[r][c] != need) return false;
                 need++;
             }
         }
@@ -100,25 +100,32 @@ int number_of_moves(struct game_state start) {
         struct game_state attempt;
         uint64_t next_id;
 
-        move_down(& (attempt = top)); 
+        attempt = top;
+        move_down(&attempt);
         next_id = serialize(attempt);
         if (next_id != top_id && !visited_has(next_id)) {
             visited_add(next_id);
             enqueue(&store, attempt);
         }
-        move_right(& (attempt = top));
+
+        attempt = top;
+        move_right(&attempt);
         next_id = serialize(attempt);
         if (next_id != top_id && !visited_has(next_id)) {
             visited_add(next_id);
             enqueue(&store, attempt);
         }
-        move_up(& (attempt = top));
+
+        attempt = top;
+        move_up(&attempt);
         next_id = serialize(attempt);
         if (next_id != top_id && !visited_has(next_id)) {
             visited_add(next_id);
             enqueue(&store, attempt);
         }
-        move_left(& (attempt = top));
+
+        attempt = top;
+        move_left(&attempt);
         next_id = serialize(attempt);
         if (next_id != top_id && !visited_has(next_id)) {
             visited_add(next_id);
