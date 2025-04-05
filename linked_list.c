@@ -1,92 +1,91 @@
 #include "linked_list.h"
 #include <stdlib.h>
-#include <stdio.h>
 
-// makes a new node with the given value
+// makes a new node with given value
 struct list_node *new_node(size_t value) {
     struct list_node *node = malloc(sizeof(struct list_node));
+    if (node == NULL) {
+        return NULL;
+    }
     node->value = value;
     node->next = NULL;
     return node;
 }
 
-// inserts a node with the given value at the head of the list
+// adds node to front of list
 void insert_at_head(struct linked_list *list, size_t value) {
     struct list_node *node = new_node(value);
-    node->next = list->head;
-    list->head = node;
-}
-
-// inserts a node with the given value at the tail of the list
-void insert_at_tail(struct linked_list *list, size_t value) {
-    struct list_node *node = new_node(value);
-
-    // if the list is empty, new node becomes the head
-    if (list->head == NULL) {
-        list->head = node;
+    if (node == NULL) {
         return;
     }
-
-    // otherwise, walk to the end and append
-    struct list_node *cur = list->head;
-    while (cur->next != NULL) {
-        cur = cur->next;
+    node->next = list->head;
+    list->head = node;
+    if (list->tail == NULL) {
+        list->tail = node;
     }
-    cur->next = node;
 }
 
-// removes a node from the head of the list and returns its value
+// adds node to end of list
+void insert_at_tail(struct linked_list *list, size_t value) {
+    struct list_node *node = new_node(value);
+    if (node == NULL) {
+        return;
+    }
+    if (list->tail == NULL) {
+        list->head = node;
+        list->tail = node;
+    } else {
+        list->tail->next = node;
+        list->tail = node;
+    }
+}
+
+// removes and returns first node's value
 size_t remove_from_head(struct linked_list *list) {
     if (list->head == NULL) {
-        return 0; // or some sentinel for "empty"
+        return 0;
     }
-    struct list_node *temp = list->head;
-    size_t val = temp->value;
-    list->head = temp->next;
-    free(temp);
-    return val;
+    struct list_node *node = list->head;
+    size_t value = node->value;
+    list->head = node->next;
+    if (list->head == NULL) {
+        list->tail = NULL;
+    }
+    free(node);
+    return value;
 }
 
-// removes a node from the tail of the list and returns its value
+// removes and returns last node's value
 size_t remove_from_tail(struct linked_list *list) {
-    if (list->head == NULL) {
-        return 0; // empty list
+    if (list->tail == NULL) {
+        return 0;
     }
-
-    // if there's only one node in the list
-    if (list->head->next == NULL) {
-        size_t val = list->head->value;
+    if (list->head == list->tail) {
+        size_t value = list->head->value;
         free(list->head);
         list->head = NULL;
-        return val;
+        list->tail = NULL;
+        return value;
     }
-
-    // otherwise, find the node before the last
-    struct list_node *cur = list->head;
-    while (cur->next->next != NULL) {
-        cur = cur->next;
+    struct list_node *prev = NULL;
+    struct list_node *curr = list->head;
+    while (curr->next != NULL) {
+        prev = curr;
+        curr = curr->next;
     }
-    size_t val = cur->next->value;
-    free(cur->next);
-    cur->next = NULL;
-    return val;
+    size_t value = curr->value;
+    free(curr);
+    prev->next = NULL;
+    list->tail = prev;
+    return value;
 }
 
 // frees all nodes in the list
 void free_list(struct linked_list list) {
-    struct list_node *cur = list.head;
-    while (cur != NULL) {
-        struct list_node *next = cur->next;
-        free(cur);
-        cur = next;
+    struct list_node *curr = list.head;
+    while (curr != NULL) {
+        struct list_node *next = curr->next;
+        free(curr);
+        curr = next;
     }
-}
-
-// debugging function to print the list contents
-void dump_list(FILE *fp, struct linked_list list) {
-    fprintf(fp, "[ ");
-    for (struct list_node *cur = list.head; cur != NULL; cur = cur->next) {
-        fprintf(fp, "%zu ", cur->value);
-    }
-    fprintf(fp, "]\n");
 }
